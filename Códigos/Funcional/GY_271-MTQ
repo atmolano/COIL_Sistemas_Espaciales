@@ -1,0 +1,206 @@
+#include <Wire.h>
+#include <QMC5883LCompass.h>
+
+// Pines de control
+const int pinPWM = 4;  // D4
+const int pinA0 = 13;  // D13
+const int pinA1 = 12;  // D12
+const int pinA2 = 14;  // D14
+
+// Estado actual
+int direccion = 1;     // 1 o 2
+bool activoA = false;
+bool activoB = false;
+
+// Variables para la brújula
+QMC5883LCompass compass;
+int calibrationData[3][2] = {{32767, -32768}, {32767, -32768}, {32767, -32768}};
+bool changed = false;
+bool done = false;
+unsigned long t = 0;
+unsigned long c = 0;
+bool calibrated = false;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Inicializar pines de control
+  pinMode(pinPWM, OUTPUT);
+  pinMode(pinA0, OUTPUT);
+  pinMode(pinA1, OUTPUT);
+  pinMode(pinA2, OUTPUT);
+
+  // Asegurarse de que ambos magnetorquers comiencen apagados
+  digitalWrite(pinPWM, LOW);
+  digitalWrite(pinA0, LOW);
+  digitalWrite(pinA1, LOW);
+  digitalWrite(pinA2, LOW);
+
+  // Inicializar brújula
+  Wire.begin(21, 22); // SDA, SCL
+  compass.init();
+
+  Serial.println("Ingrese 'q' para cambiar la dirección, 'a' para alternar magnetorquer A, 'b' para alternar magnetorquer B");
+}
+
+void loop() {
+  // Verificar entrada del usuario
+  if (Serial.available()) {
+    char input = Serial.read();
+    if (input == 'q') {
+      direccion = (direccion == 1) ? 2 : 1;
+      Serial.print("Dirección cambiada a: ");
+      Serial.println(direccion);
+    } else if (input == 'a') {
+      activoA = !activoA;
+      Serial.print("Magnetorquer A: ");
+      Serial.println(activoA ? "Activo" : "Inactivo");
+    } else if (input == 'b') {
+      activoB = !activoB;
+      Serial.print("Magnetorquer B: ");
+      Serial.println(activoB ? "Activo" : "Inactivo");
+    }
+  }
+
+  // Establecer señales de control
+  digitalWrite(pinPWM, HIGH);
+  digitalWrite(pinA0, (direccion == 1) ? LOW : HIGH);
+  digitalWrite(pinA1, activoA ? LOW : HIGH);
+  digitalWrite(pinA2, activoB ? HIGH : LOW);
+
+  // Imprimir información
+  Serial.print("MTQ A: ");
+  Serial.print(activoA ? "Activo" : "Inactivo");
+  Serial.print(" | MTQ B: ");
+  Serial.print(activoB ? "Activo" : "Inactivo");
+  Serial.print(" | DIR: ");
+  Serial.println(direccion);
+
+  // Leer y calibrar brújula
+  if (!calibrated) {
+    // Calibración
+    int x, y, z;
+
+    compass.read();
+    x = compass.getX();
+    y = compass.getY();
+    z = compass.getZ();
+
+    changed = false;
+
+    if (x < calibrationData[0][0]) {
+      calibrationData[0][0] = x;
+      changed = true;
+    }
+    if (x > calibrationData[0][1]) {
+      calibrationData[0][1] = x;
+      changed = true;
+    }
+
+    if (y < calibrationData[1][0]) {
+      calibrationData[1][0] = y;
+      changed = true;
+    }
+    if (y > calibrationData[1][1]) {
+      calibrationData[1][1] = y;
+      changed = true;
+    }
+
+    if (z < calibrationData[2][0]) {
+      calibrationData[2][0] = z;
+      changed = true;
+    }
+    if (z > calibrationData[2][1]) {
+      calibrationData[2][1] = z;
+      changed = true;
+    }
+
+    if (changed && !done) {
+      Serial.println("CALIBRATING... Keep moving your sensor around.");
+      c = millis();
+    }
+    t = millis();
+
+    if ((t - c > 5000) && !done) {
+      done = true;
+      Serial.println("DONE.");
+      Serial.println();
+
+      Serial.print("compass.setCalibration(");
+      Serial.print(calibrationData[0][0]);
+      Serial.print(", ");
+      Serial.print(calibrationData[0][1]);
+      Serial.print(", ");
+      Serial.print(calibrationData[1][0]);
+      Serial.print(", ");
+      Serial.print(calibrationData[1][1]);
+      Serial.print(", ");
+      Serial.print(calibrationData[2][0]);
+      Serial.print(", ");
+      Serial.print(calibrationData[2][1]);
+      Serial.println(");");
+
+      compass.setCalibration(calibrationData[0][0], calibrationData[0][1], calibrationData[1][0],
+                             calibrationData[1][1], calibrationData[2][0], calibrationData[2][1]);
+      calibrated = true;
+    }
+  } else {
+    // Lectura de brújula si ya está calibrada
+    int x, y, z;
+
+    compass.read();
+    x = compass.getX();
+    y = compass.getY();
+    z = compass.getZ();
+
+    int azimut = compass.getAzimuth();
+    float bearing = compass.getBearing(azimut);
+
+    Serial.println();
+
+    // Imprimir dirección
+    azimut = (azimut + 360) % 360; // Asegurar que el azimut esté en el rango de 0 a 360 grados
+
+    Serial.println("Datos del sensor GY-271 (QMC5883L):");
+
+    if ((azimut >= 337.5) || (azimut < 22.5))
+      Serial.print("North     ");
+    else if ((azimut >= 22.5) && (azimut < 67.5))
+      Serial.print("North-East");
+    else if ((azimut >= 67.5) && (azimut < 112.5))
+      Serial.print("East      ");
+    else if ((azimut >= 112.5) && (azimut < 157.5))
+      Serial.print("South-East");
+    else if ((azimut >= 157.5) && (azimut < 202.5))
+      Serial.print("South     ");
+    else if ((azimut >= 202.5) && (azimut < 247.5))
+      Serial.print("South-West");
+    else if ((azimut >= 247.5) && (azimut < 292.5))
+      Serial.print("West      ");
+    else if ((azimut >= 292.5) && (azimut < 337.5))
+      Serial.print("North-West");
+
+    Serial.print(" Azimuth: ");
+    Serial.println(azimut);
+    
+    Serial.print(" Bearing: ");
+    Serial.print(bearing);
+    Serial.println(" degrees");
+
+    Serial.print(" Magnetic Field - X: ");
+    Serial.print(x);
+    Serial.println(" µT");
+    
+    Serial.print(" Magnetic Field - Y: ");
+    Serial.print(y);
+    Serial.println(" µT");
+    
+    Serial.print(" Magnetic Field - Z: ");
+    Serial.print(z);
+    Serial.println(" µT");
+
+    delay(1000);
+  }
+
+  delay(100); // Añadir un pequeño retardo para no saturar el puerto serie
+}
