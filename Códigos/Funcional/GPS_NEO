@@ -1,0 +1,79 @@
+#include <TinyGPS++.h>
+#include <HardwareSerial.h>
+
+// Crear una instancia de la clase TinyGPSPlus
+TinyGPSPlus gps;
+
+// Crear una instancia de la clase HardwareSerial para la comunicación con el GPS
+HardwareSerial SerialGPS(1);
+
+unsigned long startTime;
+
+void setup() {
+  // Inicializar el monitor serie para depuración
+  Serial.begin(115200);
+  // Inicializar el puerto serie para el GPS a 9600 baudios
+  SerialGPS.begin(9600, SERIAL_8N1, 3, 1); // RX = GPIO 3 (D3), TX = GPIO 1 (D1)
+
+  Serial.println("Iniciando GPS...");
+  
+  // Iniciar el tiempo de espera
+  startTime = millis();
+}
+
+void loop() {
+  // Leer los datos del GPS
+  while (SerialGPS.available() > 0) {
+    gps.encode(SerialGPS.read());
+  }
+
+  // Verificar si hay datos de ubicación disponibles
+  if (gps.location.isUpdated()) {
+    // Imprimir datos de ubicación
+    Serial.println("Datos del GPS NEO-6M:");
+    
+    Serial.print("Latitud: ");
+    Serial.print(gps.location.lat(), 6);
+    Serial.println(" grados");
+    
+    Serial.print("Longitud: ");
+    Serial.print(gps.location.lng(), 6);
+    Serial.println(" grados");
+    
+    Serial.print("Altitud: ");
+    Serial.print(gps.altitude.meters());
+    Serial.println(" metros");
+    
+    Serial.print("Fecha: ");
+    Serial.print(gps.date.day());
+    Serial.print("/");
+    Serial.print(gps.date.month());
+    Serial.print("/");
+    Serial.println(gps.date.year());
+    
+    Serial.print("Hora: ");
+    Serial.print(gps.time.hour());
+    Serial.print(":");
+    Serial.print(gps.time.minute());
+    Serial.print(":");
+    Serial.println(gps.time.second());
+    
+    Serial.print("Velocidad: ");
+    Serial.print(gps.speed.kmph());
+    Serial.println(" km/h");
+    
+    Serial.println();
+
+    // Restablecer el tiempo de espera ya que se recibieron datos
+    startTime = millis();
+  } else {
+    // Comprobar si ha pasado más de 10 segundos sin recibir datos
+    if (millis() - startTime > 10000) {
+      Serial.println("No se detecta el GPS o no se reciben datos válidos.");
+      // Restablecer el tiempo de espera
+      startTime = millis();
+    }
+  }
+
+  delay(1000); // Esperar 1 segundo antes de la siguiente lectura
+}
