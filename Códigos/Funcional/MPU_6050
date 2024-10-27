@@ -1,0 +1,140 @@
+#include <Wire.h>
+#include <MPU6050.h>
+
+MPU6050 mpu6050;
+
+int16_t ax_offset, ay_offset, az_offset;
+int16_t gx_offset, gy_offset, gz_offset;
+
+void scanI2C() {
+  byte error, address;
+  int nDevices;
+
+  Serial.println("Scanning...");
+
+  nDevices = 0;
+  for (address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+
+    if (error == 0) {
+      Serial.print("I2C device found at address 0x");
+      if (address < 16)
+        Serial.print("0");
+      Serial.print(address, HEX);
+      Serial.println(" !");
+
+      nDevices++;
+    } else if (error == 4) {
+      Serial.print("Unknown error at address 0x");
+      if (address < 16)
+        Serial.print("0");
+      Serial.println(address, HEX);
+    }
+  }
+  if (nDevices == 0)
+    Serial.println("No I2C devices found\n");
+  else
+    Serial.println("done\n");
+}
+
+void calibrateMPU6050() {
+  const int samples = 1000;
+  long ax_sum = 0, ay_sum = 0, az_sum = 0;
+  long gx_sum = 0, gy_sum = 0, gz_sum = 0;
+
+  Serial.println("Calibrating MPU6050, please move the sensor...");
+  delay(2000); // Esperar 2 segundos antes de iniciar la calibración
+
+  for (int i = 0; i < samples; i++) {
+    int16_t ax, ay, az, gx, gy, gz;
+    mpu6050.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+    ax_sum += ax;
+    ay_sum += ay;
+    az_sum += az;
+    gx_sum += gx;
+    gy_sum += gy;
+    gz_sum += gz;
+
+    delay(2);
+  }
+
+  ax_offset = ax_sum / samples;
+  ay_offset = ay_sum / samples;
+  az_offset = (az_sum / samples) - 16384; // Restar la gravedad (1g = 16384 LSB)
+  gx_offset = gx_sum / samples;
+  gy_offset = gy_sum / samples;
+  gz_offset = gz_sum / samples;
+
+  Serial.println("Calibration completed.");
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Inicializar I2C en la ESP32
+  Wire.begin(21, 22); // SDA, SCL
+
+  // Escanear dispositivos I2C
+  scanI2C();
+
+  // Inicializar el sensor MPU6050
+  mpu6050.initialize();
+  if (!mpu6050.testConnection()) {
+    Serial.println("No se pudo encontrar un sensor MPU6050 válido, verifique las conexiones.");
+    while (1); // Detener el programa si no se encuentra el sensor
+  }
+
+  // Calibrar el sensor MPU6050
+  calibrateMPU6050();
+}
+
+void loop() {
+  // Leer datos del MPU6050
+  int16_t ax, ay, az, gx, gy, gz;
+  mpu6050.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  // Aplicar los valores de offset para calibrar las lecturas
+  ax -= ax_offset;
+  ay -= ay_offset;
+  az -= az_offset;
+  gx -= gx_offset;
+  gy -= gy_offset;
+  gz -= gz_offset;
+
+  // Convertir aceleración a g (1g = 16384 LSB)
+  float ax_g = ax / 16384.0;
+  float ay_g = ay / 16384.0;
+  float az_g = az / 16384.0;
+
+  // Convertir giroscopio a grados/segundo (1°/s = 131 LSB)
+  float gx_dps = gx / 131.0;
+  float gy_dps = gy / 131.0;
+  float gz_dps = gz / 131.0;
+
+  // Imprimir los valores en el monitor serie
+  Serial.println("MPU6050 Accelerometer Data:");
+  Serial.print("- Aceleration:  X = ");
+  Serial.print(ax_g);
+  Serial.println(" g");
+  Serial.print("                Y = ");
+  Serial.print(ay_g);
+  Serial.println(" g");
+  Serial.print("                Z = ");
+  Serial.print(az_g);
+  Serial.println(" g");
+
+  Serial.println("MPU6050 Gyroscope Data:");
+  Serial.print("- Gyroscope:   X = ");
+  Serial.print(gx_dps);
+  Serial.println(" °/s");
+  Serial.print("               Y = ");
+  Serial.print(gy_dps);
+  Serial.println(" °/s");
+  Serial.print("               Z = ");
+  Serial.print(gz_dps);
+  Serial.println(" °/s");
+
+  delay(1000); // Esperar 1 segundo antes de la siguiente lectura
+}
