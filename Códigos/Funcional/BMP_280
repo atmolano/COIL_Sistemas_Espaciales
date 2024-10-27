@@ -1,0 +1,81 @@
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP280.h>
+
+// Dirección I2C del BMP280, puede ser 0x76 o 0x77
+#define BMP280_I2C_ADDRESS 0x76
+
+Adafruit_BMP280 bmp280;
+
+void scanI2C() {
+  byte error, address;
+  int nDevices;
+
+  Serial.println("Scanning...");
+
+  nDevices = 0;
+  for (address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+
+    if (error == 0) {
+      Serial.print("I2C device found at address 0x");
+      if (address < 16)
+        Serial.print("0");
+      Serial.print(address, HEX);
+      Serial.println(" !");
+
+      nDevices++;
+    } else if (error == 4) {
+      Serial.print("Unknown error at address 0x");
+      if (address < 16)
+        Serial.print("0");
+      Serial.println(address, HEX);
+    }
+  }
+  if (nDevices == 0)
+    Serial.println("No I2C devices found\n");
+  else
+    Serial.println("done\n");
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Inicializar I2C en la ESP32
+  Wire.begin(21, 22); // SDA, SCL
+
+  // Escanear dispositivos I2C
+  scanI2C();
+
+  // Inicializar el sensor BMP280
+  if (!bmp280.begin(BMP280_I2C_ADDRESS)) {
+    Serial.println("No se pudo encontrar un sensor BMP280 válido, verifique las conexiones.");
+    while (1); // Detener el programa si no se encuentra el sensor
+  }
+
+  // Configuración del sensor BMP280
+  bmp280.setSampling(Adafruit_BMP280::MODE_NORMAL,     // Modo de funcionamiento
+                     Adafruit_BMP280::SAMPLING_X2,     // Muestreo de temperatura
+                     Adafruit_BMP280::SAMPLING_X16,    // Muestreo de presión
+                     Adafruit_BMP280::FILTER_X16,      // Filtro
+                     Adafruit_BMP280::STANDBY_MS_500); // Intervalo de tiempo de espera
+}
+
+void loop() {
+  // Leer temperatura y presión
+  float temperature = bmp280.readTemperature();
+  float pressure = bmp280.readPressure() / 100.0F; // Convertir a hPa
+
+  // Imprimir los valores en el monitor serie
+  Serial.println("BMP280 Barometer Data:");
+  Serial.print("- Temperature = ");
+  Serial.print(temperature);
+  Serial.println(" °C");
+
+  Serial.print("- Pressure = ");
+  Serial.print(pressure);
+  Serial.println(" hPa");
+
+  delay(1000); // Esperar 1 segundo antes de la siguiente lectura
+}
