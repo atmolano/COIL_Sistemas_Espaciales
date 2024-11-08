@@ -50,10 +50,3 @@ Si deseas contribuir al proyecto, por favor sigue estos pasos:
 4. Sube tus cambios al repositorio (`git push origin feature/nueva-funcion`).
 5. Abre un pull request en GitHub.
 
-## Licencia
-
-Este proyecto está bajo la Licencia MIT. Consulta el archivo LICENSE para más detalles.
-
----
-
-Este README proporciona una guía clara y organizada para cualquier usuario que desee trabajar en el proyecto o entender su estructura.
